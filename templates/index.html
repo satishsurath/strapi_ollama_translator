@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3>Translation Dashboard</h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Quick Actions</h5>
+                            </div>
+                            <div class="card-body">
+                                <a href="{{ url_for('config') }}" class="btn btn-primary mb-2">Configure Models</a>
+                                <a href="{{ url_for('translate') }}" class="btn btn-success mb-2">Start Translation</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Current Status</h5>
+                            </div>
+                            <div class="card-body" id="status-container">
+                                <p>Status: <span id="job-status">{{ job_status.status }}</span></p>
+                                <p>Current Job: <span id="current-job">{{ job_status.current_job or 'None' }}</span></p>
+                                <p>Progress: <span id="job-progress">{{ job_status.completed }}/{{ job_status.total }}</span></p>
+                                
+                                {% if job_status.errors %}
+                                <div class="mt-3">
+                                    <h6>Errors:</h6>
+                                    <ul>
+                                        {% for error in job_status.errors %}
+                                        <li>{{ error }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Poll for status updates if a job is running
+    function updateStatus() {
+        $.getJSON('/status', function(data) {
+            $('#job-status').text(data.status);
+            $('#current-job').text(data.current_job || 'None');
+            $('#job-progress').text(data.completed + '/' + data.total);
+            
+            // Update errors list
+            if (data.errors && data.errors.length > 0) {
+                let errorsList = '<div class="mt-3"><h6>Errors:</h6><ul>';
+                data.errors.forEach(error => {
+                    errorsList += '<li>' + error + '</li>';
+                });
+                errorsList += '</ul></div>';
+                
+                // Check if the errors div already exists
+                if ($('#status-container .mt-3').length) {
+                    $('#status-container .mt-3').replaceWith(errorsList);
+                } else {
+                    $('#status-container').append(errorsList);
+                }
+            }
+            
+            // Continue polling if job is still running
+            if (data.status === 'running') {
+                setTimeout(updateStatus, 2000);
+            }
+        });
+    }
+    
+    $(document).ready(function() {
+        // Start polling if a job is running
+        if ($('#job-status').text() === 'running') {
+            updateStatus();
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3>Translate Content</h3>
+            </div>
+            <div class="card-body">
+                <form id="translate-form">
+                    <div class="mb-3">
+                        <label for="content-type" class="form-label">Content Type</label>
+                        <select class="form-select" id="content-type" required>
+                            <option value="">Select Content Type</option>
+                            {% for ct in content_types %}
+                            <option value="{{ ct.uid }}">{{ ct.info.displayName }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Entries</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="entry-selection" id="all-entries" value="all" checked>
+                            <label class="form-check-label" for="all-entries">
+                                All Entries
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="entry-selection" id="specific-entries" value="specific">
+                            <label class="form-check-label" for="specific-entries">
+                                Specific Entries
+                            </label>
+                        </div>
+                        
+                        <div id="entries-container" class="mt-3" style="display: none;">
+                            <div class="alert alert-info">
+                                Loading entries...
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Target Languages</label>
+                        <div id="locales-container">
+                            {% for locale in locales %}
+                            {% if locale.attributes.code != source_locale %}
+                            <div class="form-check">
+                                <input class="form-check-input locale-checkbox" type="checkbox" value="{{ locale.attributes.code }}" id="locale-{{ locale.attributes.code }}">
+                                <label class="form-check-label" for="locale-{{ locale.attributes.code }}">
+                                    {{ locale.attributes.name }} ({{ locale.attributes.code }})
+                                </label>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">Start Translation</button>
+                    </div>
+                </form>
+                
+                <div id="job-status" class="mt-4" style="display: none;">
+                    <div class="alert alert-info">
+                        Translation job in progress...
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Handle entry selection radio buttons
+        $('input[name="entry-selection"]').change(function() {
+            if ($(this).val() === 'specific') {
+                // Load entries for the selected content type
+                loadEntries();
+            } else {
+                $('#entries-container').hide();
+            }
+        });
+        
+        // Handle content type change
+        $('#content-type').change(function() {
+            // Clear entries container
+            $('#entries-container').empty();
+            
+            // If specific entries is selected, load entries
+            if ($('#specific-entries').is(':checked')) {
+                loadEntries();
+            }
+        });
+        
+        // Load entries for the selected content type
+        function loadEntries() {
+            const contentType = $('#content-type').val();
+            if (!contentType) {
+                return;
+            }
+            
+            $('#entries-container').show().html('<div class="alert alert-info">Loading entries...</div>');
+            
+            $.getJSON('/entries/' + contentType, function(data) {
+                let entriesHtml = '<div class="list-group">';
+                
+                if (data.length === 0) {
+                    entriesHtml = '<div class="alert alert-warning">No entries found for this content type</div>';
+                } else {
+                    data.forEach(entry => {
+                        const title = entry.attributes.title || entry.attributes.name || 'Entry ID: ' + entry.id;
+                        entriesHtml += `
+                            <div class="form-check">
+                                <input class="form-check-input entry-checkbox" type="checkbox" value="${entry.id}" id="entry-${entry.id}">
+                                <label class="form-check-label" for="entry-${entry.id}">
+                                    ${title}
+                                </label>
+                            </div>
+                        `;
+                    });
+                }
+                
+                entriesHtml += '</div>';
+                $('#entries-container').html(entriesHtml);
+                
+                // Add select all checkbox
+                if (data.length > 0) {
+                    const selectAllHtml = `
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="select-all-entries">
+                            <label class="form-check-label" for="select-all-entries">
+                                <strong>Select All</strong>
+                            </label>
+                        </div>
+                        <hr>
+                    `;
+                    $('#entries-container').prepend(selectAllHtml);
+                    
+                    // Handle select all checkbox
+                    $('#select-all-entries').change(function() {
+                        $('.entry-checkbox').prop('checked', $(this).is(':checked'));
+                    });
+                }
+            }).fail(function() {
+                $('#entries-container').html('<div class="alert alert-danger">Error loading entries</div>');
+            });
+        }
+        
+        // Handle form submission
+        $('#translate-form').on('submit', function(e) {
+            e.preventDefault();
+            
+            const contentType = $('#content-type').val();
+            if (!contentType) {
+                alert('Please select a content type');
+                return;
+            }
+            
+            // Get target locales
+            const targetLocales = [];
+            $('.locale-checkbox:checked').each(function() {
+                targetLocales.push($(this).val());
+            });
+            
+            if (targetLocales.length === 0) {
+                alert('Please select at least one target language');
+                return;
+            }
+            
+            // Get entry IDs if specific entries selected
+            let entryIds = [];
+            if ($('#specific-entries').is(':checked')) {
+                $('.entry-checkbox:checked').each(function() {
+                    entryIds.push($(this).val());
+                });
+                
+                if (entryIds.length === 0) {
+                    alert('Please select at least one entry');
+                    return;
+                }
+            }
+            
+            // Start translation job
+            $.ajax({
+                url: '/translate',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    content_type: contentType,
+                    entry_ids: entryIds,
+                    target_locales: targetLocales
+                }),
+                success: function(response) {
+                    // Show job status
+                    $('#job-status').show();
+                    
+                    // Start polling for status updates
+                    pollJobStatus();
+                    
+                    // Disable form
+                    $('#translate-form :input').prop('disabled', true);
+                },
+                error: function(error) {
+                    alert('Error starting translation job: ' + error.responseText);
+                }
+            });
+        });
+        
+        // Poll for job status
+        function pollJobStatus() {
+            $.getJSON('/status', function(data) {
+                // Update progress bar
+                const progress = data.total > 0 ? (data.completed / data.total * 100) : 0;
+                $('.progress-bar').css('width', progress + '%').attr('aria-valuenow', progress);
+                
+                // Update status message
+                let statusHtml = `<div class="alert alert-${data.status === 'completed' ? 'success' : 'info'}">`;
+                statusHtml += `<h5>${data.current_job || 'Translation Job'}</h5>`;
+                statusHtml += `<p>Status: ${data.status}</p>`;
+                statusHtml += `<p>Progress: ${data.completed}/${data.total}</p>`;
+                
+                if (data.current_entry && data.current_locale) {
+                    statusHtml += `<p>Currently translating: Entry ID ${data.current_entry} to ${data.current_locale}</p>`;
+                }
+                
+                if (data.errors && data.errors.length > 0) {
+                    statusHtml += '<h6 class="mt-2">Errors:</h6><ul>';
+                    data.errors.forEach(error => {
+                        statusHtml += `<li>${error}</li>`;
+                    });
+                    statusHtml += '</ul>';
+                }
+                
+                statusHtml += '</div>';
+                
+                $('#job-status').html(statusHtml);
+                
+                // Continue polling if job is still running
+                if (data.status === 'running') {
+                    setTimeout(pollJobStatus, 2000);
+                } else {
+                    // Re-enable form if job is finished
+                    $('#translate-form :input').prop('disabled', false);
+                    
+                    // Add button to go to dashboard
+                    if (data.status === 'completed') {
+                        $('#job-status').append('<a href="/" class="btn btn-primary mt-2">Back to Dashboard</a>');
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

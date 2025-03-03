@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h3>Model Configuration</h3>
+            </div>
+            <div class="card-body">
+                <form id="config-form">
+                    <div class="alert alert-info">
+                        Associate each target language with a specific Ollama model for translation.
+                    </div>
+                    
+                    <div id="model-mappings">
+                        {% for locale in locales %}
+                        {% if locale.attributes.code != source_locale %}
+                        <div class="row mb-3 locale-row">
+                            <div class="col-md-3">
+                                <label>{{ locale.attributes.name }} ({{ locale.attributes.code }})</label>
+                            </div>
+                            <div class="col-md-9">
+                                <select class="form-select model-select" data-locale="{{ locale.attributes.code }}">
+                                    <option value="">Select a model</option>
+                                    {% for model in models %}
+                                    <option value="{{ model }}" {% if current_mappings.get(locale.attributes.code) == model %}selected{% endif %}>{{ model }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">Save Configuration</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Handle form submission
+        $('#config-form').on('submit', function(e) {
+            e.preventDefault();
+            
+            // Collect model mappings
+            const mappings = {};
+            $('.model-select').each(function() {
+                const locale = $(this).data('locale');
+                const model = $(this).val();
+                if (model) {
+                    mappings[locale] = model;
+                }
+            });
+            
+            // Save configuration
+            $.ajax({
+                url: '/config',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(mappings),
+                success: function(response) {
+                    alert('Configuration saved successfully');
+                },
+                error: function(error) {
+                    alert('Error saving configuration: ' + error.responseText);
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
