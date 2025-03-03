@@ -54,6 +54,8 @@ def config():
 def get_content_types():
     """Get available content types from Strapi"""
     content_types = strapi_service.get_content_types()
+    # debug
+    print(f"content_types: {content_types}")
     return jsonify(content_types)
 
 @app.route('/entries/<content_type>', methods=['GET'])
@@ -81,7 +83,11 @@ def translate():
         # If no entry IDs specified, get all entries for the content type
         if not entry_ids:
             entries = strapi_service.get_entries(content_type)
-            entry_ids = [entry.get('id') for entry in entries]
+            # Use documentId for Strapi 5
+            entry_ids = [str(entry.get('documentId', entry.get('id'))) for entry in entries]
+        else:
+            # Ensure all entry IDs are strings
+            entry_ids = [str(id) for id in entry_ids]
         
         # Trigger batch translation
         translator_service.batch_translate(content_type, entry_ids, target_locales)
@@ -89,6 +95,8 @@ def translate():
     
     # GET - Show translation form
     content_types = strapi_service.get_content_types()
+    # debug
+    print(f"content_types: {content_types}")
     locales = strapi_service.get_available_locales()
     
     return render_template(

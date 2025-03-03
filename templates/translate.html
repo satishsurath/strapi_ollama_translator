@@ -14,7 +14,7 @@
                         <select class="form-select" id="content-type" required>
                             <option value="">Select Content Type</option>
                             {% for ct in content_types %}
-                            <option value="{{ ct.uid }}">{{ ct.info.displayName }}</option>
+                            <option value="{{ ct.uid }}">{{ ct.schema.displayName }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -44,12 +44,16 @@
                     <div class="mb-3">
                         <label class="form-label">Target Languages</label>
                         <div id="locales-container">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="select-all-languages">
+                                <label class="form-check-label" for="select-all-languages"><strong>Select All Languages</strong></label>
+                            </div>
                             {% for locale in locales %}
-                            {% if locale.attributes.code != source_locale %}
+                            {% if locale.code != source_locale %}
                             <div class="form-check">
-                                <input class="form-check-input locale-checkbox" type="checkbox" value="{{ locale.attributes.code }}" id="locale-{{ locale.attributes.code }}">
-                                <label class="form-check-label" for="locale-{{ locale.attributes.code }}">
-                                    {{ locale.attributes.name }} ({{ locale.attributes.code }})
+                                <input class="form-check-input locale-checkbox" type="checkbox" value="{{ locale.code }}" id="locale-{{ locale.code }}">
+                                <label class="form-check-label" for="locale-{{ locale.code }}">
+                                    {{ locale.name }} ({{ locale.code }})
                                 </label>
                             </div>
                             {% endif %}
@@ -79,10 +83,19 @@
 {% block scripts %}
 <script>
     $(document).ready(function() {
+        console.log("Document ready");
+        
+        // Handle select all languages checkbox
+        $('#select-all-languages').change(function() {
+            $('.locale-checkbox').prop('checked', $(this).is(':checked'));
+        });
+        
         // Handle entry selection radio buttons
         $('input[name="entry-selection"]').change(function() {
+            console.log("Entry selection changed to:", $(this).val());
             if ($(this).val() === 'specific') {
                 // Load entries for the selected content type
+                console.log("Specific entries selected, calling loadEntries()");
                 loadEntries();
             } else {
                 $('#entries-container').hide();
@@ -91,11 +104,13 @@
         
         // Handle content type change
         $('#content-type').change(function() {
+            console.log("Content type changed to:", $(this).val());
             // Clear entries container
             $('#entries-container').empty();
             
             // If specific entries is selected, load entries
             if ($('#specific-entries').is(':checked')) {
+                console.log("Specific entries is checked, calling loadEntries()");
                 loadEntries();
             }
         });
@@ -103,25 +118,76 @@
         // Load entries for the selected content type
         function loadEntries() {
             const contentType = $('#content-type').val();
+            console.log("loadEntries() called with content type:", contentType);
+            
             if (!contentType) {
+                console.log("No content type selected, returning");
                 return;
             }
             
             $('#entries-container').show().html('<div class="alert alert-info">Loading entries...</div>');
             
-            $.getJSON('/entries/' + contentType, function(data) {
+            const url = '/entries/' + contentType;
+            console.log("Fetching entries from URL:", url);
+            
+            $.getJSON(url, function(data) {
+                console.log("Received entries data:", data);
                 let entriesHtml = '<div class="list-group">';
                 
                 if (data.length === 0) {
+                    console.log("No entries found");
                     entriesHtml = '<div class="alert alert-warning">No entries found for this content type</div>';
                 } else {
+                    console.log("Found " + data.length + " entries");
                     data.forEach(entry => {
-                        const title = entry.attributes.title || entry.attributes.name || 'Entry ID: ' + entry.id;
+                        console.log("Processing entry:", entry);
+                        
+                        // Use entry.attributes if available, otherwise use entry directly
+                        const attrs = entry.attributes ? entry.attributes : entry;
+                        
+                        // Get the first field name and value
+                        let displayTitle = '';
+                        let firstFieldName = '';
+                        let firstFieldValue = '';
+                        
+                        // Common field names to look for
+                        const preferredFields = ['PageTitle', 'PageCategory', 'title', 'name', 'label', 'heading', 'subject'];
+                        
+                        // First try with preferred fields
+                        for (const field of preferredFields) {
+                            if (attrs[field]) {
+                                firstFieldName = field;
+                                firstFieldValue = attrs[field];
+                                break;
+                            }
+                        }
+                        
+                        // If no preferred field found, take the first string field
+                        if (!firstFieldName) {
+                            for (const [key, value] of Object.entries(attrs)) {
+                                if (typeof value === 'string' && 
+                                    !['createdAt', 'updatedAt', 'publishedAt', 'locale'].includes(key)) {
+                                    firstFieldName = key;
+                                    firstFieldValue = value;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Format the display title using documentId instead of id
+                        const documentId = entry.documentId || entry.id; // Fallback to id if documentId not present
+                        if (firstFieldName && firstFieldValue) {
+                            displayTitle = `${firstFieldName}: "${firstFieldValue}" (ID: ${documentId})`;
+                        } else {
+                            displayTitle = `Entry ID: ${documentId}`;
+                        }
+                        
+                        console.log(`Using title: ${displayTitle}`);
                         entriesHtml += `
                             <div class="form-check">
-                                <input class="form-check-input entry-checkbox" type="checkbox" value="${entry.id}" id="entry-${entry.id}">
-                                <label class="form-check-label" for="entry-${entry.id}">
-                                    ${title}
+                                <input class="form-check-input entry-checkbox" type="checkbox" value="${documentId}" id="entry-${documentId}">
+                                <label class="form-check-label" for="entry-${documentId}">
+                                    ${displayTitle}
                                 </label>
                             </div>
                         `;
@@ -149,8 +215,10 @@
                         $('.entry-checkbox').prop('checked', $(this).is(':checked'));
                     });
                 }
-            }).fail(function() {
-                $('#entries-container').html('<div class="alert alert-danger">Error loading entries</div>');
+            }).fail(function(jqXHR, textStatus, error) {
+                console.error("Error fetching entries:", textStatus, error);
+                console.error("Response:", jqXHR.responseText);
+                $('#entries-container').html('<div class="alert alert-danger">Error loading entries: ' + textStatus + '</div>');
             });
         }
         

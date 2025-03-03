@@ -1,6 +1,7 @@
 from services.strapi_service import StrapiService
 from services.ollama_service import OllamaService
 from config import Config
+import logging
 
 class TranslatorService:
     def __init__(self):
@@ -24,7 +25,7 @@ class TranslatorService:
     def is_text_field(self, field_name, field_value):
         """Check if a field is a text field that should be translated"""
         # Skip specific fields that shouldn't be translated
-        skip_fields = ['id', 'locale', 'createdAt', 'updatedAt', 'publishedAt']
+        skip_fields = ['id', 'documentId', 'locale', 'createdAt', 'updatedAt', 'publishedAt']
         if field_name in skip_fields:
             return False
             
@@ -37,15 +38,18 @@ class TranslatorService:
         
         Args:
             content_type (str): Content type API ID
-            entry_id (int or str): Entry ID
+            entry_id (str): Document ID for the entry
             target_locales (list): List of target locale codes
             
         Returns:
             dict: Results of the translation job
         """
+        # Ensure entry_id is a string
+        entry_id = str(entry_id)
+        
         # Update job status
         self.job_status = {
-            'current_job': f"Translating {content_type} (ID: {entry_id})",
+            'current_job': f"Translating {content_type} (DocumentID: {entry_id})",
             'completed': 0,
             'total': len(target_locales),
             'errors': [],
@@ -54,6 +58,8 @@ class TranslatorService:
             'status': 'running'
         }
         
+        print(f"DEBUG: Attempting to fetch source entry: {content_type}/{entry_id} with locale {self.strapi_service.source_locale}")
+        
         # Get source entry
         source_entry = self.strapi_service.get_entry(
             content_type, 
@@ -61,10 +67,19 @@ class TranslatorService:
             self.strapi_service.source_locale
         )
         
+        print(f"DEBUG: Source entry fetch result type: {type(source_entry)}")
+        print(f"DEBUG: Source entry fetch result: {source_entry}")
+        
         if not source_entry:
+            error_msg = f"Failed to fetch source entry: {content_type}/{entry_id}"
+            print(f"ERROR: {error_msg}")
             self.job_status['status'] = 'error'
-            self.job_status['errors'].append(f"Could not fetch source entry: {content_type}/{entry_id}")
-            return self.job_status
+            self.job_status['errors'].append(error_msg)
+            return {
+                'entry_id': entry_id,
+                'error': error_msg,
+                'translations': {}
+            }
         
         results = {
             'entry_id': entry_id,
@@ -72,11 +87,18 @@ class TranslatorService:
         }
         
         # Get translatable fields (text/string fields)
-        source_attributes = source_entry.get('attributes', {})
+        # In Strapi 5, fields are directly on the entry object
         translatable_fields = {
-            key: value for key, value in source_attributes.items()
+            key: value for key, value in source_entry.items()
             if self.is_text_field(key, value)
         }
+        
+        print(f"DEBUG: Found translatable fields: {list(translatable_fields.keys())}")
+        
+        if not translatable_fields:
+            warning_msg = f"No translatable fields found in entry {entry_id}"
+            print(f"WARNING: {warning_msg}")
+            self.job_status['errors'].append(warning_msg)
         
         # Translate to each target locale
         for target_locale in target_locales:
@@ -141,7 +163,7 @@ class TranslatorService:
         
         Args:
             content_type (str): Content type API ID
-            entry_ids (list): List of entry IDs to translate
+            entry_ids (list): List of document IDs to translate
             target_locales (list): List of target locale codes
             
         Returns:
@@ -162,7 +184,11 @@ class TranslatorService:
             'entries': []
         }
         
+        # Ensure we're working with strings for documentId
+        entry_ids = [str(id) for id in entry_ids]
+        
         for entry_id in entry_ids:
+            self.job_status['current_entry'] = entry_id
             result = self.translate_entry(content_type, entry_id, target_locales)
             batch_results['entries'].append(result)
         

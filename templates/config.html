@@ -15,16 +15,16 @@
                     
                     <div id="model-mappings">
                         {% for locale in locales %}
-                        {% if locale.attributes.code != source_locale %}
+                        {% if locale.code != source_locale %}
                         <div class="row mb-3 locale-row">
                             <div class="col-md-3">
-                                <label>{{ locale.attributes.name }} ({{ locale.attributes.code }})</label>
+                                <label>{{ locale.name }} ({{ locale.code }})</label>
                             </div>
                             <div class="col-md-9">
-                                <select class="form-select model-select" data-locale="{{ locale.attributes.code }}">
+                                <select class="form-select model-select" data-locale="{{ locale.code }}">
                                     <option value="">Select a model</option>
                                     {% for model in models %}
-                                    <option value="{{ model }}" {% if current_mappings.get(locale.attributes.code) == model %}selected{% endif %}>{{ model }}</option>
+                                    <option value="{{ model }}" {% if current_mappings.get(locale.code) == model %}selected{% endif %}>{{ model }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
